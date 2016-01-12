@@ -48,7 +48,7 @@ public class TestDataGenerator {
     private List<SObject> generate(Integer amount, final SObject obj, Set<String> notRequiredFieldsToFill){
         List<SObject> result = new List<SObject>();
         String objectName = String.valueOf(obj.getSObjectType());
-        Schema.SObjectType targetType = Schema.getGlobalDescribe().get(objectName);
+        
         Map <String, Schema.SObjectField> fieldMap = Schema.getGlobalDescribe().get(objectName).getDescribe().fields.getMap();
         Set<Schema.DescribeFieldResult> fieldsToFill = findRequiredFields(obj, fieldMap, notRequiredFieldsToFill);
         return generateListOfObjects(amount, obj, fieldsToFill);
