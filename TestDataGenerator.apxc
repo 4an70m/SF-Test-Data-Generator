@@ -1,0 +1,247 @@
+public class TestDataGenerator {
+    
+    private TDSettings settings;
+    public TestDataGenerator(){
+        this.settings = new TDSettings();
+    }
+    public TestDataGenerator(TDSettings settings){
+        this.settings = settings;
+    }
+    public List<SObject> gi(Integer amount, SObject obj, Set<String> notRequiredFieldsToFill){
+        List<SObject> result = generate(amount, obj, notRequiredFieldsToFill);
+        insert result;
+        return result;
+    }
+    public List<SObject> g(Integer amount, SObject obj, Set<String> notRequiredFieldsToFill){
+        return generate(amount, obj, notRequiredFieldsToFill);
+    }
+    public List<SObject> gi(Integer amount, SObject obj){
+        return gi(amount, obj, null);
+    }
+    public List<SObject> g(Integer amount, SObject obj){
+        return g(amount, obj, null);
+    }
+    public void d(SObject obj){
+        delete getObjects(obj, '');
+    }
+    public void d(SObject obj, String query){
+        delete getObjects(obj, query);
+    }
+    
+    private List<SObject> generate(Integer amount, final SObject obj, Set<String> notRequiredFieldsToFill){
+        List<SObject> result = new List<SObject>();
+        String objectName = String.valueOf(obj.getSObjectType());
+        Schema.SObjectType targetType = Schema.getGlobalDescribe().get(objectName);
+        Map <String, Schema.SObjectField> fieldMap = Schema.getGlobalDescribe().get(objectName).getDescribe().fields.getMap();
+        Set<Schema.DescribeFieldResult> fieldsToFill = findRequiredFields(obj, fieldMap, notRequiredFieldsToFill);
+        return generateListOfObjects(amount, obj, fieldsToFill);
+    }
+    
+    private Set<Schema.DescribeFieldResult> findRequiredFields(SObject obj, Map<String, Schema.SObjectField> fieldMap, Set<String> notRequiredFieldsToFill){
+        Set<Schema.DescribeFieldResult> fieldsToFill = new Set<Schema.DescribeFieldResult>();
+        for(Schema.SObjectField field : fieldMap.values()){
+            Schema.DescribeFieldResult dfr = field.getDescribe();
+            if(isRequiredField(obj, dfr) && (settings.typesToFill.containsKey(dfr.Type) || dfr.Type == Schema.DisplayType.REFERENCE)){
+                fieldsToFill.add(dfr);
+            }
+            if(notRequiredFieldsToFill != null && notRequiredFieldsToFill.contains(dfr.Name)){
+                fieldsToFill.add(dfr);
+            }
+        }
+        return fieldsToFill;
+    }
+    private Boolean isRequiredField(SObject obj, Schema.DescribeFieldResult dfr){
+        return obj.get(dfr.Name) == null && 
+            !dfr.isNillable() && 
+            !dfr.calculated && 
+            dfr.defaultValue == null && 
+            dfr.isCreateable() && 
+            !dfr.isDefaultedOnCreate() &&
+            !settings.fieldsToAvoid.contains(dfr.Name);
+    }
+    private List<SObject> generateListOfObjects(Integer amount,  SObject obj, Set<Schema.DescribeFieldResult> fieldsToFill){
+        List<SObject> result = new List<SObject>();
+        List<SObject> insertionList = new List<SObject>();
+        for(Integer i = settings.startCounter; i < amount + settings.startCounter; i++){
+            
+            SObject newObj = obj.clone(false, true, false, false);
+            
+            for(Schema.DescribeFieldResult field : fieldsToFill){
+                
+                if(field.Type == Schema.DisplayType.REFERENCE){
+                    List<Schema.sObjectType> references = field.getReferenceTo();
+                    for(Schema.sObjectType ref : references){
+                        insertionList.addAll(generate(1, ref.newSObject(), null));
+                    }
+                }
+                newObj.put(field.Name, fillField(field.Type, i + 1));
+            }
+            result.add(newObj);
+        }
+        insert insertionList;
+        Integer j = 0;
+        for(Integer i = 0; i < amount; i++){
+            for(Schema.DescribeFieldResult field: fieldsToFill){
+                if(field.Type == Schema.DisplayType.REFERENCE){
+                    result.get(i).put(field.Name, insertionList.get(j).get('Id'));
+                    j++;
+                }
+            }
+        }
+        return result;
+    }
+    private Object fillField(Schema.DisplayType type, Integer i){
+        StandardValue sval = settings.typesToFill.get(type);
+        if(sval == null){
+            return null;
+        }
+        if(sval.isString){
+            String value = (String) sval.value;
+            value = value.replace('%%%', '-' + i);
+            return value;
+        }
+        if(sval.isNumber){
+            Decimal value = (Decimal) sval.value;
+            return value + i;
+        }
+        return sval.value;
+    }
+    private List<SObject> getObjects(SObject obj){
+        String objectName = String.valueOf(obj.getSObjectType());
+        Map<String, Schema.SObjectField> fieldMap = Schema.getGlobalDescribe().get(objectName).getDescribe().fields.getMap();
+        String query = '';
+        
+        for(Schema.SObjectField field : fieldMap.values()){
+            Schema.DescribeFieldResult dfr = field.getDescribe();
+            Object fieldVal = obj.get(dfr.Name);
+            if(fieldVal != null){
+                StandardValue sv = settings.typesToFill.get(dfr.Type);
+                if(sv != null){
+                    if(sv.isString){
+                        query += dfr.Name + ' LIKE \'' + fieldVal + '\',';
+                    }
+                    if(sv.isNumber){
+                        query += dfr.Name + ' = ' + fieldVal + ',';
+                    }
+                }
+            }
+        }
+        query = 'SELECT id FROM ' + objectName + (query != '' ? ' WHERE ' + query.removeEnd(',') : '');
+        system.debug(query);
+        return Database.query(query);
+    }
+    
+    private List<SObject> getObjects(SObject obj, String query){
+        String objectName = String.valueOf(obj.getSObjectType());
+        Map<String, Schema.SObjectField> fieldMap = Schema.getGlobalDescribe().get(objectName).getDescribe().fields.getMap();
+        
+        if(query != ''){
+            query +=',';
+        }
+        
+        for(Schema.SObjectField field : fieldMap.values()){
+            Schema.DescribeFieldResult dfr = field.getDescribe();
+            Object fieldVal = obj.get(dfr.Name);
+            if(fieldVal != null){
+                StandardValue sv = settings.typesToFill.get(dfr.Type);
+                if(sv != null){
+                    if(sv.isString){
+                        query += dfr.Name + ' LIKE \'' + fieldVal + '\',';
+                    }
+                    if(sv.isNumber){
+                        query += dfr.Name + ' = ' + fieldVal + ',';
+                    }
+                }
+            }
+        }
+        
+        query = 'SELECT id FROM ' + objectName + (query != '' ? ' WHERE ' + query.removeEnd(',') : '');
+        system.debug(query);
+        return Database.query(query);
+    }
+    
+    public class TDSettings{
+        public Integer startCounter = Math.mod((Integer)(DateTime.now().getTime()), 10000);
+        public final Set<String> fieldsToAvoid = new Set<String>{
+            'Id', 'IsDeleted', 'OwnerId', 'CreatedDate', 'CreatedById', 'LastModifiedDate', 'LastModifiedById', 'SystemModstamp'
+                };
+                    public final Map<Schema.DisplayType,StandardValue> typesToFill;
+        
+        public TDSettings(){
+            typesToFill  = new Map<Schema.DisplayType,StandardValue>();
+            typesToFill.put(Schema.DisplayType.STRING, new StandardValue('Test%%%',true,false));
+            typesToFill.put(Schema.DisplayType.TEXTAREA, new StandardValue('Test%%%',true,false));
+            typesToFill.put(Schema.DisplayType.INTEGER, new StandardValue(100,false,true));
+            typesToFill.put(Schema.DisplayType.DOUBLE, new StandardValue(1000.00,false,true));
+            typesToFill.put(Schema.DisplayType.PERCENT, new StandardValue(10.00,false,true));
+            typesToFill.put(Schema.DisplayType.EMAIL, new StandardValue('test%%%@mail.com',true,false));
+            typesToFill.put(Schema.DisplayType.PHONE, new StandardValue('123456789%%%',true,false));
+            typesToFill.put(Schema.DisplayType.URL, new StandardValue('https://salesforce.com',false,false));
+            typesToFill.put(Schema.DisplayType.CURRENCY, new StandardValue(1000.00,false,true));
+            typesToFill.put(Schema.DisplayType.BOOLEAN, new StandardValue(True,false,false));
+            typesToFill.put(Schema.DisplayType.DATE, new StandardValue(Date.today(),false,false));
+            typesToFill.put(Schema.DisplayType.DATETIME, new StandardValue(DateTime.now(),false,false));
+            typesToFill.put(Schema.DisplayType.TIME, new StandardValue(DateTime.now().timeGmt(),false,false));
+        }
+    }
+    
+    public class StandardValue{
+        public Object value;
+        public Boolean isString;
+        public Boolean isNumber;
+        
+        public standardValue(Object value, Boolean isString, Boolean isNumber){
+            this.value = value;
+            this.isString = isString;
+            this.isNumber = isNumber;
+        }
+    }
+    
+    public static void createPortalUser() {
+        UserRole portalRole = [Select Id From UserRole Where PortalType = 'None' Limit 1];
+        Profile profile1 = [Select Id from Profile where name = 'System Administrator'];
+        User portalAccountOwner1 = new User(
+            UserRoleId = portalRole.Id,
+            ProfileId = profile1.Id,
+            Username = System.now().millisecond() + 'test2@test.com',
+            Alias = 'batman',
+            Email='bruce.wayne@wayneenterprises.com',
+            EmailEncodingKey='UTF-8',
+            Firstname='Bruce',
+            Lastname='Wayne',
+            LanguageLocaleKey='en_US',
+            LocaleSidKey='en_US',
+            TimeZoneSidKey='America/Chicago'
+        );
+        Database.insert(portalAccountOwner1);
+        System.runAs(portalAccountOwner1){
+            Account portalAccount1 = new Account(
+                Name = 'TestAccount',
+                OwnerId = portalAccountOwner1.Id
+            );
+            Database.insert(portalAccount1);
+            Contact contact1 = new Contact(
+                FirstName = 'Test',
+                Lastname = 'McTesty',
+                AccountId = portalAccount1.Id,
+                Email = System.now().millisecond() + 'test@test.com'
+            );
+            Database.insert(contact1);
+            Profile portalProfile = [SELECT Id FROM Profile WHERE Name LIKE '%Customer Portal Manager Standard%' Limit 1];
+            User user1 = new User(
+                Username = System.now().millisecond() + 'test12345@test.com',
+                ContactId = contact1.Id,
+                ProfileId = portalProfile.Id,
+                Alias = 'test123',
+                Email = 'test12345@test.com',
+                EmailEncodingKey = 'UTF-8',
+                LastName = 'McTesty',
+                CommunityNickname = 'test12345',
+                TimeZoneSidKey = 'America/Los_Angeles',
+                LocaleSidKey = 'en_US',
+                LanguageLocaleKey = 'en_US'
+            );
+            Database.insert(user1);
+        }
+    }
+}

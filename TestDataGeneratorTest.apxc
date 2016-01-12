@@ -1,0 +1,74 @@
+@isTest
+public class TestDataGeneratorTest {
+
+    @isTest
+    static void create10Contact(){
+        TestDataGenerator tdg = new TestDataGenerator();
+        Test.startTest();
+        tdg.gi(10, new Contact());
+        Test.stopTest();
+        List<Contact> gl = [SELECT Id FROM Contact];
+        System.assertEquals(10, gl.size());
+    }
+    
+    @isTest
+    static void create10ContactWithAccount(){
+        TestDataGenerator tdg = new TestDataGenerator();
+        Test.startTest();
+        tdg.gi(10, new Contact(), new Set<String>{'AccountId'});
+        Test.stopTest();
+        List<Contact> gl = [SELECT Id FROM Contact];
+        List<Account> gl2 = [SELECT Id FROM Account];
+        System.assertEquals(10, gl.size());
+        System.assertEquals(10, gl2.size());
+    }
+    
+    @isTest
+    static void delete10Contact(){
+        TestDataGenerator tdg = new TestDataGenerator();
+        tdg.gi(10, new Contact());
+        List<Contact> gl = [SELECT Id FROM Contact];
+        System.assertEquals(10, gl.size());
+        Test.startTest();
+        tdg.d(new Contact());
+        Test.stopTest();
+        gl = [SELECT Id FROM Contact];
+        System.assertEquals(0, gl.size());
+    }
+    
+    @isTest
+    static void delete10SpecificContact(){
+        TestDataGenerator tdg = new TestDataGenerator();
+        tdg.gi(10, new Contact(LastName='John'));
+        List<Contact> gl = [SELECT Id FROM Contact];
+        System.assertEquals(10, gl.size());
+        Test.startTest();
+        tdg.d(new Contact(LastName='Joh_'));
+        Test.stopTest();
+        gl = [SELECT Id FROM Contact];
+        System.assertEquals(0, gl.size());
+    }
+    
+    @isTest
+    static void delete10MoreSpecificContact(){
+        TestDataGenerator tdg = new TestDataGenerator();
+        tdg.gi(10, new Contact(LastName='John'));
+        List<Contact> gl = [SELECT Id FROM Contact];
+        System.assertEquals(10, gl.size());
+        Test.startTest();
+        tdg.d(new Contact(), 'LastName LIKE \'Joh%\'');
+        Test.stopTest();
+        gl = [SELECT Id FROM Contact];
+        System.assertEquals(0, gl.size());
+    }
+    
+    @isTest
+    static void createPortalUser(){
+        Test.startTest();
+        TestDataGenerator.createPortalUser();
+        Test.stopTest();
+        List<User> ul = [SELECT Id FROM User WHERE AccountId != NULL AND CommunityNickname='test12345'];
+        System.assertEquals(1, ul.size());
+    }
+    
+}
