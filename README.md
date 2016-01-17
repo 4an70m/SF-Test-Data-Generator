@@ -10,6 +10,6 @@ Both g() and gi() methods has following parameters:
 
 Also there's a convenient d() - delete - method, which has simillar to g()/gi() syntax:
 - **sObject obj** - specifies and object, instance of which will be deleted. You can specify the field on which a query will search objects to delete, otherwise **all objects will be deleted**. For example: d(new Account(Name='My%')) - deletes all Accounts, which names start with My (it uses LIKE SOQL operator; for number fields = is used); d(new Account()) - deletes all Accounts.
-- **Set<String> notRequiredFieldsToFill** - optional field, in which you can specify any field which is not required and will be autofilled.
+- **String query** - optional field, in which you can specify exact WHERE statement.
 
 Finally, a static createPortalUser() method does exactly what it suppose to do.
