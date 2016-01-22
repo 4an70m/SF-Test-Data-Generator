@@ -15,7 +15,7 @@ public class TestDataGeneratorTest {
     static void create10ContactWithAccount(){
         TestDataGenerator tdg = new TestDataGenerator();
         Test.startTest();
-        tdg.gi(10, new Contact(), new Set<String>{'AccountId'});
+        tdg.gi(10, new Contact(), 'AccountId');
         Test.stopTest();
         List<Contact> gl = [SELECT Id FROM Contact];
         List<Account> gl2 = [SELECT Id FROM Account];

@@ -14,7 +14,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
+@isTest
 public class TestDataGenerator {
     
     private TDSettings settings;
@@ -24,13 +24,13 @@ public class TestDataGenerator {
     public TestDataGenerator(TDSettings settings){
         this.settings = settings;
     }
-    public List<SObject> gi(Integer amount, SObject obj, Set<String> notRequiredFieldsToFill){
-        List<SObject> result = generate(amount, obj, notRequiredFieldsToFill);
+    public List<SObject> gi(Integer amount, SObject obj, String notRequiredFields){
+        List<SObject> result = generate(amount, obj, parseFields(notRequiredFields));
         insert result;
         return result;
     }
-    public List<SObject> g(Integer amount, SObject obj, Set<String> notRequiredFieldsToFill){
-        return generate(amount, obj, notRequiredFieldsToFill);
+    public List<SObject> g(Integer amount, SObject obj, String notRequiredFields){
+        return generate(amount, obj, parseFields(notRequiredFields));
     }
     public List<SObject> gi(Integer amount, SObject obj){
         return gi(amount, obj, null);
@@ -48,7 +48,6 @@ public class TestDataGenerator {
     private List<SObject> generate(Integer amount, final SObject obj, Set<String> notRequiredFieldsToFill){
         List<SObject> result = new List<SObject>();
         String objectName = String.valueOf(obj.getSObjectType());
-        
         Map <String, Schema.SObjectField> fieldMap = Schema.getGlobalDescribe().get(objectName).getDescribe().fields.getMap();
         Set<Schema.DescribeFieldResult> fieldsToFill = findRequiredFields(obj, fieldMap, notRequiredFieldsToFill);
         return generateListOfObjects(amount, obj, fieldsToFill);
@@ -67,8 +66,9 @@ public class TestDataGenerator {
         }
         return fieldsToFill;
     }
+
     private Boolean isRequiredField(SObject obj, Schema.DescribeFieldResult dfr){
-        return obj.get(dfr.Name) == null && 
+        return 
             !dfr.isNillable() && 
             !dfr.calculated && 
             dfr.defaultValue == null && 
@@ -76,6 +76,7 @@ public class TestDataGenerator {
             !dfr.isDefaultedOnCreate() &&
             !settings.fieldsToAvoid.contains(dfr.Name);
     }
+
     private List<SObject> generateListOfObjects(Integer amount,  SObject obj, Set<Schema.DescribeFieldResult> fieldsToFill){
         List<SObject> result = new List<SObject>();
         List<SObject> insertionList = new List<SObject>();
@@ -91,7 +92,7 @@ public class TestDataGenerator {
                         insertionList.addAll(generate(1, ref.newSObject(), null));
                     }
                 }
-                newObj.put(field.Name, fillField(field.Type, i + 1));
+                newObj.put(field.Name, fillField(newObj, field, i + 1));
             }
             result.add(newObj);
         }
@@ -107,22 +108,61 @@ public class TestDataGenerator {
         }
         return result;
     }
-    private Object fillField(Schema.DisplayType type, Integer i){
-        StandardValue sval = settings.typesToFill.get(type);
+
+    private Object fillField(SObject obj, Schema.DescribeFieldResult field, Integer i){
+        StandardValue sval = settings.typesToFill.get(field.Type);
+        Object curValue = obj.get(field.Name);
         if(sval == null){
-            return null;
+            return curValue;
         }
         if(sval.isString){
-            String value = (String) sval.value;
-            value = value.replace('%%%', '-' + i);
-            return value;
+            return retString(curValue, sval.value, field.length, i);
         }
         if(sval.isNumber){
-            Decimal value = (Decimal) sval.value;
-            return value + i;
+            
+            return retNumber(curValue, sval.value, i);
         }
-        return sval.value;
+        return retValue(curValue, sval.value, field);
     }
+
+    private Object retNumber(Object curVal, Object val, Integer i){
+        Decimal value = 0;
+        if(curVal == null){
+            value = (Decimal) val;
+        } else {
+            value = (Decimal) curVal;
+        }
+        return value + i;
+    }
+
+    private Object retString(Object curVal, Object val, Integer length, Integer i){
+        String value = '';
+        if(curVal == null){
+            value = (String) val;
+        } else {
+            value = (String) curVal;
+        }
+        value = value.replace('%%%', '-' + i);
+        if(value.length() > length){
+            value = value.abbreviate(length);
+        }
+        return value;
+    }
+
+    private Object retValue(Object curVal, Object val, Schema.DescribeFieldResult field){
+        if(field.type == Schema.DisplayType.PICKLIST){
+            List<Schema.PicklistEntry> pl = field.getPicklistValues();
+            if(pl.size() != 0){
+                return pl[0].getValue();
+            }
+        }
+        if(curVal == null){
+            return val;
+        } else {
+            return curVal;
+        }
+    }
+
     private List<SObject> getObjects(SObject obj){
         String objectName = String.valueOf(obj.getSObjectType());
         Map<String, Schema.SObjectField> fieldMap = Schema.getGlobalDescribe().get(objectName).getDescribe().fields.getMap();
@@ -177,12 +217,22 @@ public class TestDataGenerator {
         return Database.query(query);
     }
     
+    private Set<String> parseFields(String input){
+        if(input == null) return null;
+        Set<String> fields = new Set<String>(input.split(settings.delimiter));
+        return fields;
+    }
+
     public class TDSettings{
+        public String delimiter = ',';
+        public final Set<String> typesToQuery = new Set<String>{
+            'Folder', 'Pricebook2'
+        };
         public Integer startCounter = Math.mod((Integer)(DateTime.now().getTime()), 10000);
         public final Set<String> fieldsToAvoid = new Set<String>{
             'Id', 'IsDeleted', 'OwnerId', 'CreatedDate', 'CreatedById', 'LastModifiedDate', 'LastModifiedById', 'SystemModstamp'
-                };
-                    public final Map<Schema.DisplayType,StandardValue> typesToFill;
+        };
+        public final Map<Schema.DisplayType,StandardValue> typesToFill;
         
         public TDSettings(){
             typesToFill  = new Map<Schema.DisplayType,StandardValue>();
@@ -199,6 +249,7 @@ public class TestDataGenerator {
             typesToFill.put(Schema.DisplayType.DATE, new StandardValue(Date.today(),false,false));
             typesToFill.put(Schema.DisplayType.DATETIME, new StandardValue(DateTime.now(),false,false));
             typesToFill.put(Schema.DisplayType.TIME, new StandardValue(DateTime.now().timeGmt(),false,false));
+            typesToFill.put(Schema.DisplayType.PICKLIST, new StandardValue('',false,false));
         }
     }
     
@@ -261,4 +312,5 @@ public class TestDataGenerator {
             Database.insert(user1);
         }
     }
+
 }
