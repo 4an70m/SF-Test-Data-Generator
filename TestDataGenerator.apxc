@@ -281,35 +281,45 @@ public class TestDataGenerator {
             LocaleSidKey='en_US',
             TimeZoneSidKey='America/Chicago'
         );
-        Database.insert(portalAccountOwner1);
-        System.runAs(portalAccountOwner1){
-            Account portalAccount1 = new Account(
+        System.runAs(new User(id=UserInfo.getUserId())){
+            Database.insert(portalAccountOwner1);
+        }
+        User portalUser = null;
+        Account portalAccount1;
+        Contact contact1;
+        System.runAs(portalAccountOwner){
+            portalAccount1 = new Account(
                 Name = 'TestAccount',
-                OwnerId = portalAccountOwner1.Id
+                OwnerId = portalAccountOwner.Id
             );
             Database.insert(portalAccount1);
-            Contact contact1 = new Contact(
+            contact1 = new Contact(
                 FirstName = 'Test',
                 Lastname = 'McTesty',
                 AccountId = portalAccount1.Id,
                 Email = System.now().millisecond() + 'test@test.com'
             );
             Database.insert(contact1);
-            Profile portalProfile = [SELECT Id FROM Profile WHERE Name LIKE '%Customer Portal Manager Standard%' Limit 1];
-            User user1 = new User(
-                Username = System.now().millisecond() + 'test12345@test.com',
-                ContactId = contact1.Id,
-                ProfileId = portalProfile.Id,
-                Alias = 'test123',
-                Email = 'test12345@test.com',
-                EmailEncodingKey = 'UTF-8',
-                LastName = 'McTesty',
-                CommunityNickname = 'test12345',
-                TimeZoneSidKey = 'America/Los_Angeles',
-                LocaleSidKey = 'en_US',
-                LanguageLocaleKey = 'en_US'
-            );
-            Database.insert(user1);
+        }
+        Profile portalProfile = [SELECT Id FROM Profile WHERE Name LIKE '%Customer Portal Manager%' Limit 1];
+        portalUser = new User(
+            Username = System.now().millisecond() + 'test12345@test.com',
+            ContactId = contact1.Id,
+            ProfileId = portalProfile.Id,
+            Alias = 'test123',
+            Email = 'test12345@test.com',
+            EmailEncodingKey = 'UTF-8',
+            LastName = 'McTesty',
+            CommunityNickname = 'test12345',
+            TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            LanguageLocaleKey = 'en_US'
+        );
+        System.RunAs(new User(id=userInfo.getUserId())){
+            Database.insert(portalUser);
+        }
+
+        return portalUser;
         }
     }
 
